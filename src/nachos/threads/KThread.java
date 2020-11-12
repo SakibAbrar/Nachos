@@ -408,19 +408,117 @@ public class KThread {
 	}
 	
 	public void run() {
-	//	    for (int i=0; i<5; i++) {
-	//			System.out.println("*** thread " + which * 10 + " looped "
-	//				   + i + " times");
-	//			currentThread.yield();
-	//	    }
-			System.out.println(" thread " + which * 10 + " started waiting");
-			alarm.waitUntil(1000 - which * 100);
-			System.out.println(" thread " + which * 10 + " ended waiting");
-			currentThread.yield();
+		    for (int i=0; i<5; i++) {
+				System.out.println("*** thread " + which * 10 + " looped "
+					   + i + " times");
+				currentThread.yield();
+		    }
 		}
 
 		private int which;
     }
+
+    public static void joinTest() {
+
+		class JoinDude implements Runnable {
+			JoinDude(int which) {
+				this.which = which;
+			}
+
+			public void run() {
+				for (int i=0; i<5; i++) {
+					System.out.println("*** thread " + which * 10 + " looped "
+						   + i + " times");
+					currentThread.yield();
+				}
+			}
+
+			private int which;
+		}
+
+		System.out.println("\n\n******************Join Test Started****************");
+
+		KThread thread1 = new KThread(new JoinDude(1)).setName("thread1");
+		KThread thread2 = new KThread(new JoinDude(2)).setName("thread2");
+		KThread thread3 = new KThread(new JoinDude(3)).setName("thread3");
+		KThread thread4 = new KThread(new JoinDude(4)).setName("thread4");
+
+		thread1.fork();
+		thread2.fork();
+		thread3.fork();
+		thread4.fork();
+
+		thread1.join();
+		thread2.join();
+		thread3.join();
+		thread4.join();
+
+		System.out.println("random bla bla 1");
+		System.out.println("random bla bla 2");
+		System.out.println("random bla bla 3");
+		System.out.println("random bla bla 4");
+
+		System.out.println("******************Join Test Ended****************\n\n");
+	}
+
+	public static void alarmTest() {
+
+		class AlarmDude implements Runnable {
+			AlarmDude(int which) {
+				this.which = which;
+			}
+
+			public void run() {
+				System.out.println(" thread " + which * 10 + " started waiting");
+				alarm.waitUntil(1000 - which * 100);
+				System.out.println(" thread " + which * 10 + " ended waiting");
+				currentThread.yield();
+			}
+
+			private int which;
+		}
+
+		KThread thread1 = new KThread(new AlarmDude(1)).setName("thread1");
+		KThread thread2 = new KThread(new AlarmDude(2)).setName("thread2");
+		KThread thread3 = new KThread(new AlarmDude(3)).setName("thread3");
+		KThread thread4 = new KThread(new AlarmDude(4)).setName("thread4");
+
+		thread1.fork();
+		thread2.fork();
+		thread3.fork();
+		thread4.fork();
+
+	}
+
+    public static void communicationTest() {
+
+    	class Speaker implements Runnable {
+			@Override
+			public void run() {
+				for(int idx = 3; idx < 8; idx ++) {
+					System.out.println(idx + " is speaking");
+					communicator.speak(idx);
+					currentThread.yield();
+				}
+			}
+		}
+
+		class Listener implements Runnable {
+			@Override
+			public void run() {
+				for(int idx = 3; idx < 8; idx ++) {
+					System.out.println(idx + " listens: " + communicator.listen());
+					currentThread.yield();
+				}
+			}
+		}
+
+
+		KThread thread1 = new KThread(new Speaker()).setName("thread1");
+		KThread thread2 = new KThread(new Listener()).setName("thread2");
+		thread1.fork();
+		thread2.fork();
+	}
 
     /**
      * Tests whether this module is working.
@@ -435,42 +533,22 @@ public class KThread {
 
 
 		/// test for KThread. join starts ///
-//		KThread thread1 = new KThread(new PingTest(1)).setName("thread1");
-//		KThread thread2 = new KThread(new PingTest(2)).setName("thread2");
-//		KThread thread3 = new KThread(new PingTest(3)).setName("thread3");
-//		KThread thread4 = new KThread(new PingTest(4)).setName("thread4");
-//
-//		thread1.fork();
-//		thread2.fork();
-//		thread3.fork();
-//		thread4.fork();
-//
-//		thread1.join();
-//		thread2.join();
-//		thread3.join();
-//		thread4.join();
-//
-//		System.out.println("baalsaal 1");
-//		System.out.println("baalsaal 2");
-//		System.out.println("baalsaal 3");
-//		System.out.println("baalsaal 4");
+		joinTest();
 		/// test for KThread.join ends ///
 
 
 		/// test for alarm starts ///
-
-		KThread thread1 = new KThread(new PingTest(1)).setName("thread1");
-		KThread thread2 = new KThread(new PingTest(2)).setName("thread2");
-		KThread thread3 = new KThread(new PingTest(3)).setName("thread3");
-		KThread thread4 = new KThread(new PingTest(4)).setName("thread4");
-
-		thread1.fork();
-		thread2.fork();
-		thread3.fork();
-		thread4.fork();
-
+//		System.out.println("\n\n******************Alarm Test Started****************");
+		alarmTest();
+//		System.out.println("******************Alarm Test Ended****************\n\n");
 		/// test for alarm ends ///
 
+
+		/// test for communication starts ///
+//		System.out.println("\n\n******************Communication Test Started****************");
+		communicationTest();
+//		System.out.println("******************Communication Test Ended****************\n\n");
+		/// test for communication ends ///
 
     }
 
@@ -519,6 +597,9 @@ public class KThread {
 
     // we added
 	private KThread joinedThread = null;
+
+	// for testing communicator
+	private static Communicator communicator = new Communicator();
 
 	// for testing alarm
 	private static Alarm alarm = new Alarm();
