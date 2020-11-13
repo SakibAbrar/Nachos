@@ -23,10 +23,25 @@ public class UserProcess {
      * Allocate a new process.
      */
     public UserProcess() {
-	int numPhysPages = Machine.processor().getNumPhysPages();
-	pageTable = new TranslationEntry[numPhysPages];
-	for (int i=0; i<numPhysPages; i++)
-	    pageTable[i] = new TranslationEntry(i,i, true,false,false,false);
+		int numPhysPages = Machine.processor().getNumPhysPages();
+		pageTable = new TranslationEntry[numPhysPages];
+		for (int i=0; i<numPhysPages; i++)
+			pageTable[i] = new TranslationEntry(i,i, true,false,false,false);
+
+		/// lock
+		processLock = new Lock();
+
+		/// file descriptors
+		fileDescriptors = new OpenFile[2];
+
+		/// 0th one is for input which is openForReading()
+		fileDescriptors[0] = UserKernel.console.openForReading();
+		/// 0th one is for output which is openForWriting()
+		fileDescriptors[1] = UserKernel.console.openForWriting();
+
+
+		processID = ++ processCount;
+		parentProcess = null;
     }
     
     /**
@@ -170,20 +185,19 @@ public class UserProcess {
      *			virtual memory.
      * @return	the number of bytes successfully transferred.
      */
-    public int writeVirtualMemory(int vaddr, byte[] data, int offset,
-				  int length) {
-	Lib.assertTrue(offset >= 0 && length >= 0 && offset+length <= data.length);
+    public int writeVirtualMemory(int vaddr, byte[] data, int offset, int length) {
+		Lib.assertTrue(offset >= 0 && length >= 0 && offset+length <= data.length);
 
-	byte[] memory = Machine.processor().getMemory();
-	
-	// for now, just assume that virtual addresses equal physical addresses
-	if (vaddr < 0 || vaddr >= memory.length)
-	    return 0;
+		byte[] memory = Machine.processor().getMemory();
 
-	int amount = Math.min(length, memory.length-vaddr);
-	System.arraycopy(data, offset, memory, vaddr, amount);
+		// for now, just assume that virtual addresses equal physical addresses
+		if (vaddr < 0 || vaddr >= memory.length)
+			return 0;
 
-	return amount;
+		int amount = Math.min(length, memory.length-vaddr);
+		System.arraycopy(data, offset, memory, vaddr, amount);
+
+		return amount;
     }
 
     /**
@@ -335,15 +349,93 @@ public class UserProcess {
 	processor.writeRegister(Processor.regA1, argv);
     }
 
+	/**
+	 * Handle the read() system call.
+	 */
+
+	private int handleRead(int fileDescriptor, int buffer, int count) {
+
+		/// invalid file
+		if(fileDescriptor != 0  || fileDescriptors[fileDescriptor] == null ) {
+			Lib.debug(dbgProcess, "\thandleRead: File does not exist, fd out of range " + fileDescriptor);
+			return -1;
+		}
+
+		// Read up to size bytes and save the number of bytes read
+		byte[] readBuffer = new byte[count];
+		int bytesRead;
+
+		/// lock acquire
+		processLock.acquire();
+		bytesRead = fileDescriptors[0].read(readBuffer, 0, count);
+		processLock.release();
+
+		// Return -1 if failed to read
+		if(bytesRead == -1 || bytesRead == 0) {
+			return -1;
+		}
+
+		/// lock acquire
+		processLock.acquire();
+		bytesRead = writeVirtualMemory(buffer, readBuffer, 0, count);
+		processLock.release();
+
+		return bytesRead;
+
+	}
+
+	/**
+	 * Handle the write() system call.
+	 */
+
+	private int handleWrite(int fileDescriptor, int buffer, int count) {
+
+
+
+		/// invalid file
+		if(fileDescriptor != 1 || fileDescriptors[fileDescriptor] == null ) {
+			Lib.debug(dbgProcess, "\thandleRead: File does not exist, fd out of range " + fileDescriptor);
+
+			return -1;
+		}
+
+
+		byte[] writeBuffer = new byte[count];
+		int bytesWritten;
+
+		/// lock acquire
+		processLock.acquire();
+		bytesWritten = readVirtualMemory(buffer, writeBuffer, 0, count);
+		processLock.release();
+
+		// Return -1 if failed to read
+		if(bytesWritten == -1 || bytesWritten == 0) {
+			return -1;
+		}
+
+		processLock.acquire();
+		bytesWritten = fileDescriptors[1].write(writeBuffer, 0, bytesWritten);
+		processLock.release();
+
+		return bytesWritten;
+
+	}
+
+
     /**
      * Handle the halt() system call. 
      */
     private int handleHalt() {
 
-	Machine.halt();
-	
-	Lib.assertNotReached("Machine.halt() did not halt machine!");
-	return 0;
+    	/// if it is not root
+		if(processID != ROOTPROCESSID ) {
+			return -1;
+		}
+
+		Machine.halt();
+
+		Lib.assertNotReached("Machine.halt() did not halt machine!");
+		return 0;
     }
 
 
@@ -388,16 +480,16 @@ public class UserProcess {
      * @return	the value to be returned to the user.
      */
     public int handleSyscall(int syscall, int a0, int a1, int a2, int a3) {
-	switch (syscall) {
-	case syscallHalt:
-	    return handleHalt();
+		switch (syscall) {
+		case syscallHalt:
+			return handleHalt();
 
 
-	default:
-	    Lib.debug(dbgProcess, "Unknown syscall " + syscall);
-	    Lib.assertNotReached("Unknown system call!");
-	}
-	return 0;
+		default:
+			Lib.debug(dbgProcess, "Unknown syscall " + syscall);
+			Lib.assertNotReached("Unknown system call!");
+		}
+		return 0;
     }
 
     /**
@@ -446,4 +538,24 @@ public class UserProcess {
 	
     private static final int pageSize = Processor.pageSize;
     private static final char dbgProcess = 'a';
+
+
+    //static vars
+	private static int processCount = 0;
+
+	// process id of root
+	private final int ROOTPROCESSID = 0;
+
+
+	// process id of this
+	private int processID;
+
+	private UserProcess parentProcess;
+
+	private Lock processLock;
+
+	// file descriptor
+	private OpenFile[] fileDescriptors;
+
+
 }
